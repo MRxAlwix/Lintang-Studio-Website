@@ -1,47 +1,84 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { toast } from "@/hooks/use-toast"
-import { ValidatedInput, useFormValidation, validationRules } from "@/components/form-validation"
-import { Loader2, LogIn, Eye, EyeOff } from "lucide-react"
+import { Eye, EyeOff, ArrowLeft, LogIn, Loader2, AlertCircle } from "lucide-react"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 
-interface LoginFormData {
-  email: string
-  password: string
-}
-
-const validationSchema = {
-  email: validationRules.email,
-  password: { required: true, minLength: 1 },
-}
-
 export default function LoginPage() {
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+  })
+  const [errors, setErrors] = useState({
+    email: "",
+    password: "",
+  })
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
   const router = useRouter()
   const supabase = createClientComponentClient()
 
-  const { values, errors, touched, setValue, setFieldTouched, validateAll, reset } = useFormValidation<LoginFormData>(
-    {
-      email: "",
-      password: "",
-    },
-    validationSchema,
-  )
+  const validateEmail = (email: string): string => {
+    if (!email.trim()) return "Email wajib diisi"
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) return "Format email tidak valid"
+    return ""
+  }
+
+  const validatePassword = (password: string): string => {
+    if (!password.trim()) return "Password wajib diisi"
+    if (password.length < 6) return "Password minimal 6 karakter"
+    return ""
+  }
+
+  const handleInputChange = (field: "email" | "password", value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }))
+
+    // Clear previous errors
+    setErrors((prev) => ({ ...prev, [field]: "" }))
+    setLoginError(null)
+  }
+
+  const handleInputBlur = (field: "email" | "password") => {
+    const value = formData[field]
+    let error = ""
+
+    if (field === "email") {
+      error = validateEmail(value)
+    } else if (field === "password") {
+      error = validatePassword(value)
+    }
+
+    setErrors((prev) => ({ ...prev, [field]: error }))
+  }
+
+  const validateForm = (): boolean => {
+    const emailError = validateEmail(formData.email)
+    const passwordError = validatePassword(formData.password)
+
+    setErrors({
+      email: emailError,
+      password: passwordError,
+    })
+
+    return !emailError && !passwordError
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoginError(null)
 
-    if (!validateAll()) {
+    if (!validateForm()) {
       toast({
         title: "Form tidak valid",
         description: "Mohon periksa kembali email dan password Anda",
@@ -55,8 +92,8 @@ export default function LoginPage() {
     try {
       // Sign in with Supabase
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: values.email,
-        password: values.password,
+        email: formData.email,
+        password: formData.password,
       })
 
       if (error) {
@@ -112,7 +149,7 @@ export default function LoginPage() {
   }
 
   const handleForgotPassword = async () => {
-    if (!values.email) {
+    if (!formData.email) {
       toast({
         title: "Email diperlukan",
         description: "Masukkan email Anda terlebih dahulu",
@@ -122,7 +159,7 @@ export default function LoginPage() {
     }
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(values.email, {
+      const { error } = await supabase.auth.resetPasswordForEmail(formData.email, {
         redirectTo: `${window.location.origin}/reset-password`,
       })
 
@@ -143,115 +180,139 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/20 via-background to-secondary/20 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <div className="flex items-center justify-center mb-4">
-            <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center">
-              <LogIn className="h-6 w-6 text-primary-foreground" />
+      <div className="w-full max-w-md">
+        {/* Back to Home */}
+        <Link href="/" className="inline-flex items-center text-primary hover:text-primary/80 mb-8 transition-colors">
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Kembali ke Beranda
+        </Link>
+
+        <Card className="shadow-xl">
+          <CardHeader className="space-y-1">
+            <div className="flex items-center justify-center mb-4">
+              <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center">
+                <LogIn className="h-6 w-6 text-primary-foreground" />
+              </div>
             </div>
-          </div>
-          <CardTitle className="text-2xl text-center">Masuk ke Akun</CardTitle>
-          <CardDescription className="text-center">
-            Masukkan email dan password untuk mengakses dashboard
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Login Error Alert */}
-            {loginError && (
-              <Alert variant="destructive">
-                <AlertDescription>{loginError}</AlertDescription>
-              </Alert>
-            )}
+            <CardTitle className="text-2xl text-center">Masuk ke Akun</CardTitle>
+            <CardDescription className="text-center">
+              Masukkan email dan password untuk mengakses dashboard
+            </CardDescription>
+          </CardHeader>
 
-            {/* Email Field */}
-            <ValidatedInput
-              id="email"
-              label="Email"
-              type="email"
-              placeholder="admin@lintangstudio.com"
-              value={values.email}
-              onChange={(value) => setValue("email", value)}
-              rules={validationRules.email}
-            />
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Login Error Alert */}
+              {loginError && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{loginError}</AlertDescription>
+                </Alert>
+              )}
 
-            {/* Password Field */}
-            <div className="space-y-2">
-              <ValidatedInput
-                id="password"
-                label="Password"
-                type={showPassword ? "text" : "password"}
-                placeholder="Masukkan password Anda"
-                value={values.password}
-                onChange={(value) => setValue("password", value)}
-                rules={{ required: true, minLength: 1 }}
-              />
+              {/* Email Field */}
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-sm font-medium">
+                  Email <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="admin@lintangstudio.com"
+                  value={formData.email}
+                  onChange={(e) => handleInputChange("email", e.target.value)}
+                  onBlur={() => handleInputBlur("email")}
+                  className={errors.email ? "border-red-500 focus:border-red-500" : ""}
+                  disabled={isLoading}
+                />
+                {errors.email && (
+                  <div className="flex items-center gap-1 text-sm text-red-500">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.email}
+                  </div>
+                )}
+              </div>
 
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-auto p-0 text-sm text-muted-foreground hover:text-foreground"
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? (
+              {/* Password Field */}
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-sm font-medium">
+                  Password <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Masukkan password Anda"
+                    value={formData.password}
+                    onChange={(e) => handleInputChange("password", e.target.value)}
+                    onBlur={() => handleInputBlur("password")}
+                    className={errors.password ? "border-red-500 focus:border-red-500" : ""}
+                    disabled={isLoading}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowPassword(!showPassword)}
+                    disabled={isLoading}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                {errors.password && (
+                  <div className="flex items-center gap-1 text-sm text-red-500">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.password}
+                  </div>
+                )}
+              </div>
+
+              {/* Submit Button */}
+              <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
+                {isLoading ? (
                   <>
-                    <EyeOff className="h-4 w-4 mr-1" />
-                    Sembunyikan password
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Memproses...
                   </>
                 ) : (
                   <>
-                    <Eye className="h-4 w-4 mr-1" />
-                    Tampilkan password
+                    <LogIn className="mr-2 h-4 w-4" />
+                    Masuk
                   </>
                 )}
               </Button>
-            </div>
 
-            {/* Submit Button */}
-            <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Memproses...
-                </>
-              ) : (
-                <>
-                  <LogIn className="mr-2 h-4 w-4" />
-                  Masuk
-                </>
-              )}
-            </Button>
+              {/* Forgot Password */}
+              <div className="text-center">
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  onClick={handleForgotPassword}
+                  disabled={isLoading}
+                  className="text-sm text-muted-foreground hover:text-primary"
+                >
+                  Lupa password?
+                </Button>
+              </div>
+            </form>
 
-            {/* Forgot Password */}
-            <div className="text-center">
-              <Button
-                type="button"
-                variant="link"
-                size="sm"
-                onClick={handleForgotPassword}
-                disabled={isLoading}
-                className="text-sm text-muted-foreground hover:text-primary"
-              >
-                Lupa password?
-              </Button>
+            {/* Demo Credentials */}
+            <div className="mt-6 p-4 bg-muted rounded-lg">
+              <p className="text-sm font-medium mb-2">Demo Credentials:</p>
+              <div className="text-xs space-y-1 text-muted-foreground">
+                <p>
+                  <strong>Admin:</strong> admin@lintangstudio.com / admin123
+                </p>
+                <p>
+                  <strong>Client:</strong> client@example.com / client123
+                </p>
+              </div>
             </div>
-          </form>
-
-          {/* Demo Credentials */}
-          <div className="mt-6 p-4 bg-muted rounded-lg">
-            <p className="text-sm font-medium mb-2">Demo Credentials:</p>
-            <div className="text-xs space-y-1 text-muted-foreground">
-              <p>
-                <strong>Admin:</strong> admin@lintangstudio.com / admin123
-              </p>
-              <p>
-                <strong>Client:</strong> client@example.com / client123
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

@@ -1,262 +1,292 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { supabase } from "@/lib/supabase"
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
+import { cookies } from "next/headers"
 
 interface InvoiceData {
-  invoiceNumber: string
-  date: string
-  customerName: string
-  customerEmail: string
-  serviceType?: string
-  pluginName?: string
-  subtotal: number
-  discountAmount: number
-  totalAmount: number
-  status: string
+  id: string
+  customer_name: string
+  customer_email: string
+  customer_phone: string
+  service_name: string
+  service_price: number
+  plugin_name?: string
+  plugin_price?: number
+  promo_code?: string
+  promo_discount?: number
+  total_amount: number
+  payment_status: string
+  created_at: string
 }
 
-const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    minimumFractionDigits: 0,
-  }).format(amount)
-}
+function generateInvoiceHTML(data: InvoiceData): string {
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+    }).format(amount)
+  }
 
-const generateInvoiceHTML = (data: InvoiceData) => {
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("id-ID", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })
+  }
+
   return `
     <!DOCTYPE html>
-    <html>
+    <html lang="id">
     <head>
       <meta charset="UTF-8">
-      <title>Invoice ${data.invoiceNumber}</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Invoice #${data.id}</title>
       <style>
         body {
           font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-          margin: 0;
-          padding: 30px;
-          background-color: #ffffff;
-          color: #1f2937;
+          line-height: 1.6;
+          color: #333;
+          max-width: 800px;
+          margin: 0 auto;
+          padding: 20px;
+          background-color: #f9f9f9;
+        }
+        .invoice-container {
+          background: white;
+          padding: 40px;
+          border-radius: 10px;
+          box-shadow: 0 0 20px rgba(0,0,0,0.1);
         }
         .header {
           display: flex;
           justify-content: space-between;
-          margin-bottom: 30px;
-          border-bottom: 2px solid #2563eb;
+          align-items: center;
+          margin-bottom: 40px;
           padding-bottom: 20px;
+          border-bottom: 3px solid #3b82f6;
         }
         .logo {
-          font-size: 24px;
-          font-weight: bold;
-          color: #2563eb;
-        }
-        .company {
-          font-size: 12px;
-          color: #666666;
-          margin-top: 5px;
-        }
-        .invoice-title {
           font-size: 28px;
           font-weight: bold;
-          color: #1f2937;
+          color: #3b82f6;
+        }
+        .invoice-info {
           text-align: right;
+        }
+        .invoice-title {
+          font-size: 24px;
+          color: #1f2937;
+          margin: 0;
         }
         .invoice-number {
-          font-size: 14px;
-          color: #666666;
-          text-align: right;
-          margin-top: 5px;
+          color: #6b7280;
+          margin: 5px 0;
         }
-        .section {
-          margin-bottom: 20px;
+        .invoice-date {
+          color: #6b7280;
         }
-        .section-title {
-          font-size: 16px;
-          font-weight: bold;
-          color: #1f2937;
-          margin-bottom: 10px;
-          border-bottom: 1px solid #e5e7eb;
-          padding-bottom: 5px;
-        }
-        .row {
+        .billing-info {
           display: flex;
           justify-content: space-between;
-          margin-bottom: 8px;
+          margin-bottom: 40px;
         }
-        .label {
-          font-size: 12px;
-          color: #666666;
-          font-weight: bold;
+        .billing-section {
+          flex: 1;
         }
-        .value {
-          font-size: 12px;
+        .billing-section h3 {
           color: #1f2937;
+          margin-bottom: 10px;
+          font-size: 16px;
         }
-        .table {
-          margin-top: 20px;
+        .billing-section p {
+          margin: 5px 0;
+          color: #4b5563;
+        }
+        .items-table {
           width: 100%;
           border-collapse: collapse;
+          margin-bottom: 30px;
         }
-        .table-header {
-          background-color: #f3f4f6;
-          padding: 10px;
-          border-bottom: 1px solid #d1d5db;
-        }
-        .table-row {
-          padding: 10px;
+        .items-table th,
+        .items-table td {
+          padding: 15px;
+          text-align: left;
           border-bottom: 1px solid #e5e7eb;
         }
-        .table-cell {
-          padding: 10px;
-          font-size: 12px;
+        .items-table th {
+          background-color: #f3f4f6;
+          font-weight: 600;
+          color: #1f2937;
         }
-        .table-cell-header {
-          padding: 10px;
-          font-size: 12px;
-          font-weight: bold;
-          color: #374151;
+        .items-table tr:hover {
+          background-color: #f9fafb;
         }
         .total-section {
-          margin-top: 30px;
-          text-align: right;
+          margin-left: auto;
+          width: 300px;
         }
         .total-row {
           display: flex;
           justify-content: space-between;
-          width: 200px;
-          margin-left: auto;
-          margin-bottom: 5px;
+          padding: 10px 0;
+          border-bottom: 1px solid #e5e7eb;
         }
-        .total-label {
-          font-size: 12px;
-          color: #666666;
-        }
-        .total-value {
-          font-size: 12px;
+        .total-row.final {
+          border-bottom: 3px solid #3b82f6;
+          font-weight: bold;
+          font-size: 18px;
           color: #1f2937;
         }
-        .grand-total {
-          display: flex;
-          justify-content: space-between;
-          width: 200px;
-          margin-left: auto;
-          margin-top: 10px;
-          padding-top: 10px;
-          border-top: 2px solid #2563eb;
+        .status-badge {
+          display: inline-block;
+          padding: 5px 15px;
+          border-radius: 20px;
+          font-size: 12px;
+          font-weight: 600;
+          text-transform: uppercase;
         }
-        .grand-total-label {
-          font-size: 14px;
-          font-weight: bold;
-          color: #1f2937;
+        .status-paid {
+          background-color: #d1fae5;
+          color: #065f46;
         }
-        .grand-total-value {
-          font-size: 14px;
-          font-weight: bold;
-          color: #2563eb;
+        .status-pending {
+          background-color: #fef3c7;
+          color: #92400e;
         }
         .footer {
-          position: fixed;
-          bottom: 30px;
-          left: 30px;
-          right: 30px;
-          text-align: center;
-          font-size: 10px;
-          color: #666666;
+          margin-top: 40px;
+          padding-top: 20px;
           border-top: 1px solid #e5e7eb;
-          padding-top: 10px;
-        }
-        .status {
-          background-color: #10b981;
-          color: #ffffff;
-          padding: 5px 10px;
-          border-radius: 3px;
-          font-size: 10px;
-          font-weight: bold;
           text-align: center;
-          margin-top: 10px;
-          display: inline-block;
+          color: #6b7280;
+          font-size: 14px;
+        }
+        .company-info {
+          margin-top: 20px;
+          text-align: center;
+          color: #6b7280;
+          font-size: 12px;
         }
         @media print {
-          body { margin: 0; }
-          .footer { position: absolute; }
+          body {
+            background-color: white;
+          }
+          .invoice-container {
+            box-shadow: none;
+          }
         }
       </style>
     </head>
     <body>
-      <!-- Header -->
-      <div class="header">
-        <div>
+      <div class="invoice-container">
+        <!-- Header -->
+        <div class="header">
           <div class="logo">Lintang Studio</div>
-          <div class="company">Professional Technical Design Services</div>
-          <div class="company">Email: admin@lintangstudio.com</div>
-          <div class="company">WhatsApp: +62 812 3456 7890</div>
+          <div class="invoice-info">
+            <h1 class="invoice-title">INVOICE</h1>
+            <p class="invoice-number">#${data.id}</p>
+            <p class="invoice-date">${formatDate(data.created_at)}</p>
+          </div>
         </div>
-        <div>
-          <div class="invoice-title">INVOICE</div>
-          <div class="invoice-number">${data.invoiceNumber}</div>
-          <div class="invoice-number">${data.date}</div>
-        </div>
-      </div>
 
-      <!-- Customer Information -->
-      <div class="section">
-        <div class="section-title">Bill To:</div>
-        <div class="row">
-          <span class="label">Customer Name:</span>
-          <span class="value">${data.customerName}</span>
+        <!-- Billing Information -->
+        <div class="billing-info">
+          <div class="billing-section">
+            <h3>Dari:</h3>
+            <p><strong>Lintang Studio</strong></p>
+            <p>Jasa Pembuatan Website & Aplikasi</p>
+            <p>Email: admin@lintangstudio.com</p>
+            <p>WhatsApp: +62 812 3456 7890</p>
+          </div>
+          <div class="billing-section">
+            <h3>Kepada:</h3>
+            <p><strong>${data.customer_name}</strong></p>
+            <p>Email: ${data.customer_email}</p>
+            <p>Phone: ${data.customer_phone}</p>
+          </div>
         </div>
-        <div class="row">
-          <span class="label">Email:</span>
-          <span class="value">${data.customerEmail}</span>
-        </div>
-      </div>
 
-      <!-- Service/Product Details -->
-      <table class="table">
-        <thead>
-          <tr class="table-header">
-            <th class="table-cell-header">Description</th>
-            <th class="table-cell-header">Quantity</th>
-            <th class="table-cell-header">Unit Price</th>
-            <th class="table-cell-header">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr class="table-row">
-            <td class="table-cell">${data.serviceType || data.pluginName || "Service"}</td>
-            <td class="table-cell">1</td>
-            <td class="table-cell">${formatCurrency(data.subtotal)}</td>
-            <td class="table-cell">${formatCurrency(data.subtotal)}</td>
-          </tr>
-        </tbody>
-      </table>
+        <!-- Items Table -->
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th>Deskripsi</th>
+              <th>Jumlah</th>
+              <th>Harga Satuan</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <strong>${data.service_name}</strong>
+                <br>
+                <small>Jasa pembuatan website profesional</small>
+              </td>
+              <td>1</td>
+              <td>${formatCurrency(data.service_price)}</td>
+              <td>${formatCurrency(data.service_price)}</td>
+            </tr>
+            ${
+              data.plugin_name
+                ? `
+            <tr>
+              <td>
+                <strong>${data.plugin_name}</strong>
+                <br>
+                <small>Plugin tambahan</small>
+              </td>
+              <td>1</td>
+              <td>${formatCurrency(data.plugin_price || 0)}</td>
+              <td>${formatCurrency(data.plugin_price || 0)}</td>
+            </tr>
+            `
+                : ""
+            }
+          </tbody>
+        </table>
 
-      <!-- Totals -->
-      <div class="total-section">
-        <div class="total-row">
-          <span class="total-label">Subtotal:</span>
-          <span class="total-value">${formatCurrency(data.subtotal)}</span>
+        <!-- Total Section -->
+        <div class="total-section">
+          <div class="total-row">
+            <span>Subtotal:</span>
+            <span>${formatCurrency((data.service_price || 0) + (data.plugin_price || 0))}</span>
+          </div>
+          ${
+            data.promo_code
+              ? `
+          <div class="total-row">
+            <span>Diskon (${data.promo_code}):</span>
+            <span>-${formatCurrency(data.promo_discount || 0)}</span>
+          </div>
+          `
+              : ""
+          }
+          <div class="total-row final">
+            <span>Total:</span>
+            <span>${formatCurrency(data.total_amount)}</span>
+          </div>
         </div>
-        ${
-          data.discountAmount > 0
-            ? `
-        <div class="total-row">
-          <span class="total-label">Discount:</span>
-          <span class="total-value">-${formatCurrency(data.discountAmount)}</span>
-        </div>
-        `
-            : ""
-        }
-        <div class="grand-total">
-          <span class="grand-total-label">Total:</span>
-          <span class="grand-total-value">${formatCurrency(data.totalAmount)}</span>
-        </div>
-        <div class="status">PAID</div>
-      </div>
 
-      <!-- Footer -->
-      <div class="footer">
-        Thank you for your business! This invoice was generated automatically by Lintang Studio system.<br>
-        For any questions, please contact us at admin@lintangstudio.com
+        <!-- Payment Status -->
+        <div style="margin-top: 30px;">
+          <p><strong>Status Pembayaran:</strong> 
+            <span class="status-badge ${data.payment_status === "paid" ? "status-paid" : "status-pending"}">
+              ${data.payment_status === "paid" ? "LUNAS" : "MENUNGGU PEMBAYARAN"}
+            </span>
+          </p>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+          <p>Terima kasih atas kepercayaan Anda menggunakan jasa Lintang Studio!</p>
+          <p>Untuk pertanyaan lebih lanjut, silakan hubungi kami di admin@lintangstudio.com</p>
+        </div>
+
+        <div class="company-info">
+          <p>Lintang Studio - Professional Web Development Services</p>
+          <p>Website: https://lintangstudio.com | Email: admin@lintangstudio.com</p>
+        </div>
       </div>
     </body>
     </html>
@@ -265,16 +295,50 @@ const generateInvoiceHTML = (data: InvoiceData) => {
 
 export async function POST(request: NextRequest) {
   try {
-    const invoiceData: InvoiceData = await request.json()
+    const supabase = createRouteHandlerClient({ cookies })
+    const { orderId } = await request.json()
 
-    // Generate HTML content
+    if (!orderId) {
+      return NextResponse.json({ error: "Order ID is required" }, { status: 400 })
+    }
+
+    // Get order details
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select(`
+        *,
+        services (name, price),
+        plugins (name, price)
+      `)
+      .eq("id", orderId)
+      .single()
+
+    if (orderError || !order) {
+      return NextResponse.json({ error: "Order not found" }, { status: 404 })
+    }
+
+    // Prepare invoice data
+    const invoiceData: InvoiceData = {
+      id: order.id,
+      customer_name: order.customer_name,
+      customer_email: order.customer_email,
+      customer_phone: order.customer_phone,
+      service_name: order.services?.name || "Custom Service",
+      service_price: order.services?.price || order.total_amount,
+      plugin_name: order.plugins?.name,
+      plugin_price: order.plugins?.price,
+      promo_code: order.promo_code,
+      promo_discount: order.promo_discount,
+      total_amount: order.total_amount,
+      payment_status: order.payment_status,
+      created_at: order.created_at,
+    }
+
+    // Generate HTML invoice
     const htmlContent = generateInvoiceHTML(invoiceData)
 
-    // For now, we'll store the HTML content and return the data
-    // In production, you might want to use a service like Puppeteer to generate PDF
-    const fileName = `${invoiceData.invoiceNumber}.html`
-
-    // Upload HTML to Supabase Storage
+    // Save invoice to Supabase Storage
+    const fileName = `invoice-${orderId}-${Date.now()}.html`
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from("invoices")
       .upload(fileName, htmlContent, {
@@ -284,42 +348,20 @@ export async function POST(request: NextRequest) {
 
     if (uploadError) {
       console.error("Upload error:", uploadError)
-      return NextResponse.json({ error: "Failed to upload invoice" }, { status: 500 })
-    }
-
-    // Get public URL
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from("invoices").getPublicUrl(fileName)
-
-    // Save invoice record to database
-    const { data: invoice, error: dbError } = await supabase
-      .from("invoices")
-      .insert({
-        invoice_number: invoiceData.invoiceNumber,
-        customer_name: invoiceData.customerName,
-        customer_email: invoiceData.customerEmail,
-        service_type: invoiceData.serviceType,
-        plugin_name: invoiceData.pluginName,
-        subtotal: invoiceData.subtotal,
-        discount_amount: invoiceData.discountAmount,
-        total_amount: invoiceData.totalAmount,
-        status: invoiceData.status,
-        pdf_url: publicUrl,
-      })
-      .select()
-      .single()
-
-    if (dbError) {
-      console.error("Database error:", dbError)
       return NextResponse.json({ error: "Failed to save invoice" }, { status: 500 })
     }
 
+    // Get public URL
+    const { data: urlData } = supabase.storage.from("invoices").getPublicUrl(fileName)
+
+    // Update order with invoice URL
+    await supabase.from("orders").update({ invoice_url: urlData.publicUrl }).eq("id", orderId)
+
     return NextResponse.json({
       success: true,
-      invoice,
-      invoiceUrl: publicUrl,
-      htmlContent, // Return HTML for client-side PDF generation if needed
+      invoiceUrl: urlData.publicUrl,
+      fileName: fileName,
+      html: htmlContent,
     })
   } catch (error) {
     console.error("Invoice generation error:", error)
@@ -330,33 +372,31 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const customerEmail = searchParams.get("customerEmail")
     const orderId = searchParams.get("orderId")
-    const pluginPurchaseId = searchParams.get("pluginPurchaseId")
 
-    let query = supabase.from("invoices").select("*").order("created_at", { ascending: false })
-
-    if (customerEmail) {
-      query = query.eq("customer_email", customerEmail)
+    if (!orderId) {
+      return NextResponse.json({ error: "Order ID is required" }, { status: 400 })
     }
 
-    if (orderId) {
-      query = query.eq("order_id", orderId)
+    const supabase = createRouteHandlerClient({ cookies })
+
+    // Get order with invoice URL
+    const { data: order, error } = await supabase.from("orders").select("invoice_url").eq("id", orderId).single()
+
+    if (error || !order) {
+      return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
 
-    if (pluginPurchaseId) {
-      query = query.eq("plugin_purchase_id", pluginPurchaseId)
+    if (!order.invoice_url) {
+      return NextResponse.json({ error: "Invoice not generated yet" }, { status: 404 })
     }
 
-    const { data, error } = await query
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
-    return NextResponse.json({ data })
+    return NextResponse.json({
+      success: true,
+      invoiceUrl: order.invoice_url,
+    })
   } catch (error) {
-    console.error("Error fetching invoices:", error)
+    console.error("Get invoice error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
