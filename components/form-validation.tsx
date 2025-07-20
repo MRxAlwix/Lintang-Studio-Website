@@ -4,269 +4,327 @@ import type React from "react"
 import { useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle, CheckCircle } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { CheckCircle, XCircle, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-interface ValidationRule {
-  required?: boolean
-  minLength?: number
-  maxLength?: number
-  pattern?: RegExp
-  custom?: (value: string) => string | null
+// Validation rules
+export const validationRules = {
+  email: {
+    pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+    message: "Format email tidak valid",
+  },
+  phone: {
+    pattern: /^(\+62|62|0)[0-9]{9,13}$/,
+    message: "Nomor telepon harus format Indonesia (08xx atau +62)",
+  },
+  name: {
+    pattern: /^[a-zA-Z\s]{2,50}$/,
+    message: "Nama harus 2-50 karakter, hanya huruf dan spasi",
+  },
+  password: {
+    pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]{8,}$/,
+    message: "Password minimal 8 karakter, harus ada huruf besar, kecil, dan angka",
+  },
+  required: {
+    pattern: /.+/,
+    message: "Field ini wajib diisi",
+  },
+  url: {
+    pattern: /^https?:\/\/.+/,
+    message: "URL harus dimulai dengan http:// atau https://",
+  },
+  number: {
+    pattern: /^\d+$/,
+    message: "Hanya boleh angka",
+  },
 }
 
-interface ValidatedInputProps {
-  id: string
+interface ValidationState {
+  isValid: boolean
+  message: string
+  touched: boolean
+}
+
+interface ValidatedInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label: string
-  type?: string
-  placeholder?: string
-  value: string
-  onChange: (value: string) => void
-  rules?: ValidationRule
-  className?: string
+  validationType?: keyof typeof validationRules | "custom"
+  customValidation?: (value: string) => { isValid: boolean; message: string }
+  required?: boolean
+  onValidationChange?: (isValid: boolean, message: string) => void
 }
 
 export function ValidatedInput({
-  id,
   label,
-  type = "text",
-  placeholder,
-  value,
-  onChange,
-  rules,
+  validationType,
+  customValidation,
+  required = false,
+  onValidationChange,
   className,
+  ...props
 }: ValidatedInputProps) {
-  const [touched, setTouched] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [validation, setValidation] = useState<ValidationState>({
+    isValid: true,
+    message: "",
+    touched: false,
+  })
 
-  const validateValue = (val: string): string | null => {
-    if (!rules) return null
-
-    if (rules.required && !val.trim()) {
-      return "Field ini wajib diisi"
+  const validateValue = (value: string) => {
+    if (required && !value.trim()) {
+      return { isValid: false, message: "Field ini wajib diisi" }
     }
 
-    if (rules.minLength && val.length < rules.minLength) {
-      return `Minimal ${rules.minLength} karakter`
+    if (!value.trim()) {
+      return { isValid: true, message: "" }
     }
 
-    if (rules.maxLength && val.length > rules.maxLength) {
-      return `Maksimal ${rules.maxLength} karakter`
+    if (customValidation) {
+      return customValidation(value)
     }
 
-    if (rules.pattern && !rules.pattern.test(val)) {
-      if (type === "email") {
-        return "Format email tidak valid"
-      }
-      if (type === "tel") {
-        return "Format nomor telepon tidak valid"
-      }
-      return "Format tidak valid"
+    if (validationType && validationRules[validationType]) {
+      const rule = validationRules[validationType]
+      const isValid = rule.pattern.test(value)
+      return { isValid, message: isValid ? "" : rule.message }
     }
 
-    if (rules.custom) {
-      return rules.custom(val)
-    }
+    return { isValid: true, message: "" }
+  }
 
-    return null
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const result = validateValue(e.target.value)
+    setValidation({
+      ...result,
+      touched: true,
+    })
+    onValidationChange?.(result.isValid, result.message)
+    props.onBlur?.(e)
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newValue = e.target.value
-    onChange(newValue)
-
-    if (touched) {
-      const validationError = validateValue(newValue)
-      setError(validationError)
+    if (validation.touched) {
+      const result = validateValue(e.target.value)
+      setValidation({
+        ...result,
+        touched: true,
+      })
+      onValidationChange?.(result.isValid, result.message)
     }
+    props.onChange?.(e)
   }
 
-  const handleBlur = () => {
-    setTouched(true)
-    const validationError = validateValue(value)
-    setError(validationError)
+  const getValidationIcon = () => {
+    if (!validation.touched) return null
+    if (validation.isValid) return <CheckCircle className="h-4 w-4 text-green-500" />
+    return <XCircle className="h-4 w-4 text-red-500" />
   }
 
-  const isValid = touched && !error && value.trim()
-  const hasError = touched && error
+  const getInputClassName = () => {
+    if (!validation.touched) return ""
+    return validation.isValid ? "border-green-500 focus:border-green-500" : "border-red-500 focus:border-red-500"
+  }
 
   return (
     <div className="space-y-2">
-      <Label htmlFor={id} className="text-sm font-medium">
+      <Label htmlFor={props.id} className="text-sm font-medium">
         {label}
-        {rules?.required && <span className="text-red-500 ml-1">*</span>}
+        {required && <span className="text-red-500 ml-1">*</span>}
       </Label>
-
       <div className="relative">
-        <Input
-          id={id}
-          type={type}
-          placeholder={placeholder}
-          value={value}
-          onChange={handleChange}
-          onBlur={handleBlur}
-          className={cn(
-            "transition-colors duration-200",
-            hasError && "border-red-500 focus:border-red-500 focus:ring-red-500",
-            isValid && "border-green-500 focus:border-green-500 focus:ring-green-500",
-            className,
-          )}
-        />
-
-        {/* Validation Icons */}
-        {touched && (
-          <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-            {error ? (
-              <AlertCircle className="h-4 w-4 text-red-500" />
-            ) : value.trim() ? (
-              <CheckCircle className="h-4 w-4 text-green-500" />
-            ) : null}
-          </div>
-        )}
+        <Input {...props} onBlur={handleBlur} onChange={handleChange} className={cn(getInputClassName(), className)} />
+        <div className="absolute right-3 top-1/2 transform -translate-y-1/2">{getValidationIcon()}</div>
       </div>
-
-      {/* Error Message */}
-      {hasError && (
-        <Alert variant="destructive" className="py-2">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription className="text-sm">{error}</AlertDescription>
-        </Alert>
+      {validation.touched && validation.message && (
+        <div className="flex items-center gap-1 text-sm text-red-500">
+          <AlertCircle className="h-3 w-3" />
+          {validation.message}
+        </div>
       )}
     </div>
   )
 }
 
-// Validation utilities
-export const validationRules = {
-  required: { required: true },
-  email: {
-    required: true,
-    pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-  },
-  phone: {
-    required: true,
-    pattern: /^(\+62|62|0)[0-9]{9,13}$/,
-    custom: (value: string) => {
-      const cleaned = value.replace(/\D/g, "")
-      if (cleaned.length < 10) return "Nomor telepon terlalu pendek"
-      if (cleaned.length > 15) return "Nomor telepon terlalu panjang"
-      return null
-    },
-  },
-  password: {
-    required: true,
-    minLength: 8,
-    custom: (value: string) => {
-      if (!/(?=.*[a-z])/.test(value)) return "Harus mengandung huruf kecil"
-      if (!/(?=.*[A-Z])/.test(value)) return "Harus mengandung huruf besar"
-      if (!/(?=.*\d)/.test(value)) return "Harus mengandung angka"
-      return null
-    },
-  },
-  name: {
-    required: true,
-    minLength: 2,
-    maxLength: 100,
-    pattern: /^[a-zA-Z\s]+$/,
-    custom: (value: string) => {
-      if (value.trim().split(" ").length < 2) return "Masukkan nama lengkap"
-      return null
-    },
-  },
-  text: {
-    required: true,
-    minLength: 1,
-    maxLength: 500,
-  },
+interface ValidatedTextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+  label: string
+  required?: boolean
+  minLength?: number
+  maxLength?: number
+  onValidationChange?: (isValid: boolean, message: string) => void
 }
 
-// Form validation hook
-export function useFormValidation<T extends Record<string, any>>(
-  initialValues: T,
-  validationSchema: Record<keyof T, ValidationRule>,
-) {
-  const [values, setValues] = useState<T>(initialValues)
-  const [errors, setErrors] = useState<Partial<Record<keyof T, string>>>({})
-  const [touched, setTouched] = useState<Partial<Record<keyof T, boolean>>>({})
+export function ValidatedTextarea({
+  label,
+  required = false,
+  minLength,
+  maxLength,
+  onValidationChange,
+  className,
+  ...props
+}: ValidatedTextareaProps) {
+  const [validation, setValidation] = useState<ValidationState>({
+    isValid: true,
+    message: "",
+    touched: false,
+  })
 
-  const validateField = (name: keyof T, value: any): string | null => {
-    const rules = validationSchema[name]
-    if (!rules) return null
-
-    const stringValue = String(value || "")
-
-    if (rules.required && !stringValue.trim()) {
-      return "Field ini wajib diisi"
+  const validateValue = (value: string) => {
+    if (required && !value.trim()) {
+      return { isValid: false, message: "Field ini wajib diisi" }
     }
 
-    if (rules.minLength && stringValue.length < rules.minLength) {
-      return `Minimal ${rules.minLength} karakter`
+    if (minLength && value.length < minLength) {
+      return { isValid: false, message: `Minimal ${minLength} karakter` }
     }
 
-    if (rules.maxLength && stringValue.length > rules.maxLength) {
-      return `Maksimal ${rules.maxLength} karakter`
+    if (maxLength && value.length > maxLength) {
+      return { isValid: false, message: `Maksimal ${maxLength} karakter` }
     }
 
-    if (rules.pattern && !rules.pattern.test(stringValue)) {
-      return "Format tidak valid"
-    }
-
-    if (rules.custom) {
-      return rules.custom(stringValue)
-    }
-
-    return null
+    return { isValid: true, message: "" }
   }
 
-  const setValue = (name: keyof T, value: any) => {
-    setValues((prev) => ({ ...prev, [name]: value }))
-
-    if (touched[name]) {
-      const error = validateField(name, value)
-      setErrors((prev) => ({ ...prev, [name]: error }))
-    }
-  }
-
-  const setFieldTouched = (name: keyof T) => {
-    setTouched((prev) => ({ ...prev, [name]: true }))
-    const error = validateField(name, values[name])
-    setErrors((prev) => ({ ...prev, [name]: error }))
-  }
-
-  const validateAll = (): boolean => {
-    const newErrors: Partial<Record<keyof T, string>> = {}
-    let isValid = true
-
-    Object.keys(validationSchema).forEach((key) => {
-      const fieldName = key as keyof T
-      const error = validateField(fieldName, values[fieldName])
-      if (error) {
-        newErrors[fieldName] = error
-        isValid = false
-      }
+  const handleBlur = (e: React.FocusEvent<HTMLTextAreaElement>) => {
+    const result = validateValue(e.target.value)
+    setValidation({
+      ...result,
+      touched: true,
     })
-
-    setErrors(newErrors)
-    setTouched(Object.keys(validationSchema).reduce((acc, key) => ({ ...acc, [key]: true }), {}))
-
-    return isValid
+    onValidationChange?.(result.isValid, result.message)
+    props.onBlur?.(e)
   }
 
-  const reset = () => {
-    setValues(initialValues)
-    setErrors({})
-    setTouched({})
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    if (validation.touched) {
+      const result = validateValue(e.target.value)
+      setValidation({
+        ...result,
+        touched: true,
+      })
+      onValidationChange?.(result.isValid, result.message)
+    }
+    props.onChange?.(e)
+  }
+
+  const getTextareaClassName = () => {
+    if (!validation.touched) return ""
+    return validation.isValid ? "border-green-500 focus:border-green-500" : "border-red-500 focus:border-red-500"
+  }
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={props.id} className="text-sm font-medium">
+        {label}
+        {required && <span className="text-red-500 ml-1">*</span>}
+      </Label>
+      <Textarea
+        {...props}
+        onBlur={handleBlur}
+        onChange={handleChange}
+        className={cn(getTextareaClassName(), className)}
+      />
+      {maxLength && (
+        <div className="text-xs text-gray-500 text-right">
+          {props.value?.toString().length || 0}/{maxLength}
+        </div>
+      )}
+      {validation.touched && validation.message && (
+        <div className="flex items-center gap-1 text-sm text-red-500">
+          <AlertCircle className="h-3 w-3" />
+          {validation.message}
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface ValidatedSelectProps {
+  label: string
+  required?: boolean
+  value: string
+  onValueChange: (value: string) => void
+  onValidationChange?: (isValid: boolean, message: string) => void
+  children: React.ReactNode
+  placeholder?: string
+}
+
+export function ValidatedSelect({
+  label,
+  required = false,
+  value,
+  onValueChange,
+  onValidationChange,
+  children,
+  placeholder,
+}: ValidatedSelectProps) {
+  const [validation, setValidation] = useState<ValidationState>({
+    isValid: true,
+    message: "",
+    touched: false,
+  })
+
+  const validateValue = (value: string) => {
+    if (required && !value) {
+      return { isValid: false, message: "Pilihan ini wajib dipilih" }
+    }
+    return { isValid: true, message: "" }
+  }
+
+  const handleValueChange = (newValue: string) => {
+    const result = validateValue(newValue)
+    setValidation({
+      ...result,
+      touched: true,
+    })
+    onValidationChange?.(result.isValid, result.message)
+    onValueChange(newValue)
+  }
+
+  return (
+    <div className="space-y-2">
+      <Label className="text-sm font-medium">
+        {label}
+        {required && <span className="text-red-500 ml-1">*</span>}
+      </Label>
+      <Select value={value} onValueChange={handleValueChange}>
+        <SelectTrigger className={cn(validation.touched && !validation.isValid && "border-red-500")}>
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>{children}</SelectContent>
+      </Select>
+      {validation.touched && validation.message && (
+        <div className="flex items-center gap-1 text-sm text-red-500">
+          <AlertCircle className="h-3 w-3" />
+          {validation.message}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Hook for form validation
+export function useFormValidation() {
+  const [validationStates, setValidationStates] = useState<Record<string, boolean>>({})
+  const [isFormValid, setIsFormValid] = useState(false)
+
+  const updateValidation = (fieldName: string, isValid: boolean) => {
+    setValidationStates((prev) => {
+      const newStates = { ...prev, [fieldName]: isValid }
+      const allValid = Object.values(newStates).every(Boolean)
+      setIsFormValid(allValid)
+      return newStates
+    })
+  }
+
+  const resetValidation = () => {
+    setValidationStates({})
+    setIsFormValid(false)
   }
 
   return {
-    values,
-    errors,
-    touched,
-    setValue,
-    setFieldTouched,
-    validateAll,
-    reset,
-    isValid: Object.keys(errors).length === 0 && Object.keys(touched).length > 0,
+    validationStates,
+    isFormValid,
+    updateValidation,
+    resetValidation,
   }
 }
