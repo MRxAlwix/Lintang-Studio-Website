@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -34,25 +34,28 @@ export default function PluginStorePage() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
+  const [sortBy, setSortBy] = useState("created_at")
+  const [sortOrder, setSortOrder] = useState("desc")
   const [selectedPlugin, setSelectedPlugin] = useState<Plugin | null>(null)
   const [showPurchaseModal, setShowPurchaseModal] = useState(false)
   const [userPurchases, setUserPurchases] = useState<string[]>([])
 
-  useEffect(() => {
-    fetchPlugins()
-    fetchUserPurchases()
-  }, [])
-
-  useEffect(() => {
-    filterPlugins()
-  }, [plugins, searchTerm, categoryFilter])
-
-  const fetchPlugins = async () => {
+  const fetchPlugins = useCallback(async () => {
     try {
-      const response = await fetch("/api/plugins")
+      const params = new URLSearchParams({
+        search: searchTerm,
+        category: categoryFilter,
+        sortBy,
+        sortOrder,
+        limit: "20",
+        offset: "0",
+      })
+
+      const response = await fetch(`/api/plugins/search?${params}`)
       if (response.ok) {
         const data = await response.json()
-        setPlugins(data)
+        setPlugins(data.plugins || [])
+        setFilteredPlugins(data.plugins || [])
       }
     } catch (error) {
       console.error("Error fetching plugins:", error)
@@ -60,7 +63,7 @@ export default function PluginStorePage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [searchTerm, categoryFilter, sortBy, sortOrder])
 
   const fetchUserPurchases = async () => {
     try {
@@ -74,23 +77,18 @@ export default function PluginStorePage() {
     }
   }
 
-  const filterPlugins = () => {
-    let filtered = plugins.filter((plugin) => plugin.is_active)
+  useEffect(() => {
+    fetchPlugins()
+    fetchUserPurchases()
+  }, [])
 
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (plugin) =>
-          plugin.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          plugin.description.toLowerCase().includes(searchTerm.toLowerCase()),
-      )
-    }
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      fetchPlugins()
+    }, 300)
 
-    if (categoryFilter !== "all") {
-      filtered = filtered.filter((plugin) => plugin.category === categoryFilter)
-    }
-
-    setFilteredPlugins(filtered)
-  }
+    return () => clearTimeout(timeoutId)
+  }, [fetchPlugins])
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("id-ID", {

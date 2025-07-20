@@ -6,7 +6,19 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Users, ShoppingCart, DollarSign, Eye, Edit, Trash2, Plus, Download, Filter, MessageCircle } from "lucide-react"
+import {
+  Users,
+  ShoppingCart,
+  DollarSign,
+  Eye,
+  Edit,
+  Trash2,
+  Plus,
+  Download,
+  Filter,
+  MessageCircle,
+  TrendingUp,
+} from "lucide-react"
 import Link from "next/link"
 
 export default function AdminDashboard() {
@@ -147,13 +159,14 @@ export default function AdminDashboard() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="orders">Orders</TabsTrigger>
             <TabsTrigger value="plugins">Plugins</TabsTrigger>
             <TabsTrigger value="clients">Clients</TabsTrigger>
             <TabsTrigger value="plugin-store">Plugin Store</TabsTrigger>
             <TabsTrigger value="chat">Chat</TabsTrigger>
+            <TabsTrigger value="stats">Statistics</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
@@ -386,6 +399,19 @@ export default function AdminDashboard() {
                 <Link href="/admin/chat">
                   <MessageCircle className="w-4 h-4 mr-2" />
                   Buka Chat Management
+                </Link>
+              </Button>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="stats" className="space-y-6">
+            <div className="text-center">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Advanced Statistics</h3>
+              <p className="text-gray-600 mb-4">Analisis mendalam performa bisnis dan revenue</p>
+              <Button asChild>
+                <Link href="/admin/stats">
+                  <TrendingUp className="w-4 h-4 mr-2" />
+                  Buka Dashboard Statistik
                 </Link>
               </Button>
             </div>

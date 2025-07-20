@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Upload, FileText, X, CreditCard } from "lucide-react"
 import { toast } from "sonner"
+import { PromoCodeInput } from "@/components/promo-code-input"
+import { ProjectTimeEstimator } from "@/components/project-time-estimator"
 
 interface OrderFormProps {
   selectedService?: {
@@ -50,6 +52,8 @@ export function OrderForm({ selectedService, selectedArea, estimatedPrice, onClo
   })
   const [isLoading, setIsLoading] = useState(false)
   const [dragActive, setDragActive] = useState(false)
+  const [appliedPromo, setAppliedPromo] = useState<any>(null)
+  const [finalAmount, setFinalAmount] = useState(estimatedPrice || 0)
 
   const services = [
     { id: "autocad-2d-basic", name: "AutoCAD 2D Basic", price: 300000 },
@@ -107,6 +111,16 @@ export function OrderForm({ selectedService, selectedArea, estimatedPrice, onClo
     }))
   }
 
+  const handlePromoApplied = (promoData: any) => {
+    setAppliedPromo(promoData)
+    setFinalAmount(promoData.final_amount)
+  }
+
+  const handlePromoRemoved = () => {
+    setAppliedPromo(null)
+    setFinalAmount(estimatedPrice || 0)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
@@ -121,6 +135,13 @@ export function OrderForm({ selectedService, selectedArea, estimatedPrice, onClo
       submitData.append("area", formData.area)
       submitData.append("notes", formData.notes)
       submitData.append("estimatedPrice", estimatedPrice?.toString() || "0")
+
+      // Tambahkan setelah submitData.append("estimatedPrice", estimatedPrice?.toString() || "0")
+      if (appliedPromo) {
+        submitData.append("promoCode", appliedPromo.promo_code || "")
+        submitData.append("discountAmount", appliedPromo.discount_amount?.toString() || "0")
+        submitData.append("finalAmount", finalAmount.toString())
+      }
 
       // Append files
       formData.files.forEach((file, index) => {
@@ -258,6 +279,15 @@ export function OrderForm({ selectedService, selectedArea, estimatedPrice, onClo
               </div>
             </div>
 
+            {/* Project Time Estimation */}
+            {formData.service && formData.area && (
+              <ProjectTimeEstimator
+                serviceCategory={formData.service.split("-")[0]} // Extract category from service ID
+                area={Number.parseFloat(formData.area)}
+                className="mt-4"
+              />
+            )}
+
             {/* File Upload */}
             <div className="space-y-4">
               <h3 className="font-semibold text-lg">Upload File (Opsional)</h3>
@@ -313,12 +343,36 @@ export function OrderForm({ selectedService, selectedArea, estimatedPrice, onClo
               )}
             </div>
 
+            {/* Promo Code */}
+            <PromoCodeInput
+              amount={estimatedPrice || 0}
+              type="services"
+              onPromoApplied={handlePromoApplied}
+              onPromoRemoved={handlePromoRemoved}
+            />
+
             {/* Price Summary */}
             {estimatedPrice && (
               <div className="bg-blue-50 rounded-lg p-4">
-                <div className="flex justify-between items-center">
-                  <span className="font-medium">Estimasi Total:</span>
-                  <span className="text-xl font-bold text-blue-600">{formatCurrency(estimatedPrice)}</span>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium">Subtotal:</span>
+                    <span className="text-lg font-bold text-gray-900">{formatCurrency(estimatedPrice)}</span>
+                  </div>
+
+                  {appliedPromo && (
+                    <div className="flex justify-between items-center text-green-600">
+                      <span>Diskon ({appliedPromo.promo_name}):</span>
+                      <span>-{formatCurrency(appliedPromo.discount_amount)}</span>
+                    </div>
+                  )}
+
+                  <div className="border-t pt-2">
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium">Total Akhir:</span>
+                      <span className="text-xl font-bold text-blue-600">{formatCurrency(finalAmount)}</span>
+                    </div>
+                  </div>
                 </div>
                 <p className="text-sm text-gray-600 mt-1">Harga final akan dikonfirmasi setelah review detail proyek</p>
               </div>

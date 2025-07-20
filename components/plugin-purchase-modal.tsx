@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { X, CreditCard, Download, Star } from "lucide-react"
 import { toast } from "sonner"
+import { PromoCodeInput } from "@/components/promo-code-input"
 
 interface Plugin {
   id: string
@@ -42,6 +43,8 @@ export function PluginPurchaseModal({ plugin, onClose, onSuccess }: PluginPurcha
     whatsapp: "",
   })
   const [isLoading, setIsLoading] = useState(false)
+  const [appliedPromo, setAppliedPromo] = useState<any>(null)
+  const [finalAmount, setFinalAmount] = useState(plugin.price)
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("id-ID", {
@@ -53,6 +56,16 @@ export function PluginPurchaseModal({ plugin, onClose, onSuccess }: PluginPurcha
 
   const handleInputChange = (field: keyof PurchaseFormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handlePromoApplied = (promoData: any) => {
+    setAppliedPromo(promoData)
+    setFinalAmount(promoData.final_amount)
+  }
+
+  const handlePromoRemoved = () => {
+    setAppliedPromo(null)
+    setFinalAmount(plugin.price)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -70,6 +83,9 @@ export function PluginPurchaseModal({ plugin, onClose, onSuccess }: PluginPurcha
           customerName: formData.fullName,
           customerEmail: formData.email,
           customerWhatsapp: formData.whatsapp,
+          promoCode: appliedPromo?.promo_code || null,
+          discountAmount: appliedPromo?.discount_amount || 0,
+          finalAmount: finalAmount,
         }),
       })
 
@@ -155,9 +171,25 @@ export function PluginPurchaseModal({ plugin, onClose, onSuccess }: PluginPurcha
 
             {/* Price */}
             <div className="border-t pt-4">
-              <div className="flex justify-between items-center">
-                <span className="text-lg font-medium">Total Pembayaran:</span>
-                <span className="text-2xl font-bold text-blue-600">{formatCurrency(plugin.price)}</span>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-medium">Harga Plugin:</span>
+                  <span className="text-lg text-gray-900">{formatCurrency(plugin.price)}</span>
+                </div>
+
+                {appliedPromo && (
+                  <div className="flex justify-between items-center text-green-600">
+                    <span>Diskon ({appliedPromo.promo_name}):</span>
+                    <span>-{formatCurrency(appliedPromo.discount_amount)}</span>
+                  </div>
+                )}
+
+                <div className="border-t pt-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-lg font-medium">Total Pembayaran:</span>
+                    <span className="text-2xl font-bold text-blue-600">{formatCurrency(finalAmount)}</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -165,6 +197,14 @@ export function PluginPurchaseModal({ plugin, onClose, onSuccess }: PluginPurcha
           {/* Purchase Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <h3 className="font-semibold text-lg">Informasi Pembeli</h3>
+
+            {/* Promo Code */}
+            <PromoCodeInput
+              amount={plugin.price}
+              type="plugins"
+              onPromoApplied={handlePromoApplied}
+              onPromoRemoved={handlePromoRemoved}
+            />
 
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
