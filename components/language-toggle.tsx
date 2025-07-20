@@ -3,17 +3,17 @@ import { Button } from "@/components/ui/button"
 import { useLanguage } from "@/hooks/use-language"
 
 export function LanguageToggle() {
-  const { language, setLanguage, t } = useLanguage()
+  const { language, setLanguage } = useLanguage()
 
   return (
     <Button
       variant="ghost"
       size="sm"
       onClick={() => setLanguage(language === "id" ? "en" : "id")}
-      className="h-9 px-3 text-sm font-medium"
+      className="w-12 px-0 font-medium"
     >
-      {language === "id" ? "🇮🇩 ID" : "🇬🇧 EN"}
-      <span className="sr-only">{t("common.switchLanguage")}</span>
+      {language === "id" ? "🇮🇩" : "🇬🇧"}
+      <span className="ml-1 text-xs">{language.toUpperCase()}</span>
     </Button>
   )
 }

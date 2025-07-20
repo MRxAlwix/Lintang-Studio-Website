@@ -32,41 +32,22 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url)
-    const page = Number.parseInt(searchParams.get("page") || "1")
-    const limit = Number.parseInt(searchParams.get("limit") || "50")
-    const status = searchParams.get("status")
-    const provider = searchParams.get("provider")
-
-    let query = supabase.from("wa_logs").select("*", { count: "exact" }).order("created_at", { ascending: false })
-
-    if (status) {
-      query = query.eq("status", status)
-    }
-
-    if (provider) {
-      query = query.eq("provider", provider)
-    }
-
-    const { data, error, count } = await query.range((page - 1) * limit, page * limit - 1)
+    const { data: logs, error } = await supabase
+      .from("wa_logs")
+      .select("*")
+      .order("sent_at", { ascending: false })
+      .limit(100)
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      console.error("Database error:", error)
+      return NextResponse.json({ error: "Failed to fetch WhatsApp logs" }, { status: 500 })
     }
 
-    return NextResponse.json({
-      data,
-      pagination: {
-        page,
-        limit,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / limit),
-      },
-    })
+    return NextResponse.json(logs || [])
   } catch (error) {
-    console.error("Error fetching wa-logs:", error)
+    console.error("API Error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

@@ -7,159 +7,208 @@ export async function GET(request: NextRequest) {
     const period = searchParams.get("period") || "7d"
 
     // Calculate date range based on period
+    let dateFilter = ""
     const now = new Date()
-    let startDate: Date
 
     switch (period) {
       case "24h":
-        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+        dateFilter = `created_at >= '${yesterday.toISOString()}'`
         break
       case "7d":
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+        dateFilter = `created_at >= '${weekAgo.toISOString()}'`
         break
       case "30d":
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+        dateFilter = `created_at >= '${monthAgo.toISOString()}'`
         break
       case "90d":
-        startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+        const quarterAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+        dateFilter = `created_at >= '${quarterAgo.toISOString()}'`
         break
       case "1y":
-        startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000)
+        const yearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000)
+        dateFilter = `created_at >= '${yearAgo.toISOString()}'`
         break
       default:
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+        dateFilter = `created_at >= '${new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()}'`
     }
 
-    // Get total revenue from orders and plugin purchases
-    const { data: orderRevenue } = await supabase
+    // Get orders statistics
+    const { data: orders, error: ordersError } = await supabase
       .from("orders")
-      .select("amount")
-      .eq("status", "paid")
-      .gte("created_at", startDate.toISOString())
+      .select("*")
+      .gte("created_at", dateFilter.split("'")[1])
 
-    const { data: pluginRevenue } = await supabase
+    if (ordersError) {
+      console.error("Orders query error:", ordersError)
+      return NextResponse.json({ error: "Failed to fetch orders" }, { status: 500 })
+    }
+
+    // Get plugin purchases statistics
+    const { data: pluginPurchases, error: pluginError } = await supabase
       .from("plugin_purchases")
-      .select("amount")
-      .eq("status", "paid")
-      .gte("created_at", startDate.toISOString())
+      .select("*, plugins(name)")
+      .gte("created_at", dateFilter.split("'")[1])
 
-    const serviceRevenue = orderRevenue?.reduce((sum, order) => sum + (order.amount || 0), 0) || 0
-    const pluginRevenueTotal = pluginRevenue?.reduce((sum, purchase) => sum + (purchase.amount || 0), 0) || 0
-    const totalRevenue = serviceRevenue + pluginRevenueTotal
+    if (pluginError) {
+      console.error("Plugin purchases query error:", pluginError)
+    }
 
-    // Get order statistics
-    const { data: orders } = await supabase
-      .from("orders")
-      .select("status, created_at")
-      .gte("created_at", startDate.toISOString())
+    // Get plugins data
+    const { data: plugins, error: pluginsError } = await supabase.from("plugins").select("*")
 
+    if (pluginsError) {
+      console.error("Plugins query error:", pluginsError)
+    }
+
+    // Calculate statistics
     const totalOrders = orders?.length || 0
-    const pendingOrders = orders?.filter((order) => order.status === "pending").length || 0
-    const completedOrders = orders?.filter((order) => order.status === "completed").length || 0
+    const completedOrders = orders?.filter((o) => o.status === "completed").length || 0
+    const pendingOrders = orders?.filter((o) => o.status === "pending_payment").length || 0
 
-    // Get client statistics
-    const { data: clients } = await supabase
-      .from("orders")
-      .select("customer_email, customer_name, amount, created_at")
-      .eq("status", "paid")
-      .gte("created_at", startDate.toISOString())
+    const serviceRevenue = orders?.reduce((sum, order) => sum + (order.amount || 0), 0) || 0
+    const pluginRevenue = pluginPurchases?.reduce((sum, purchase) => sum + (purchase.final_amount || 0), 0) || 0
+    const totalRevenue = serviceRevenue + pluginRevenue
 
-    const uniqueClients = new Set(clients?.map((order) => order.customer_email) || [])
-    const totalClients = uniqueClients.size
-    const activeClients = totalClients // For now, all clients with orders are considered active
+    // Get unique clients
+    const allEmails = [
+      ...(orders?.map((o) => o.customer_email) || []),
+      ...(pluginPurchases?.map((p) => p.customer_email) || []),
+    ]
+    const uniqueEmails = [...new Set(allEmails)]
+    const totalClients = uniqueEmails.length
+    const activeClients = uniqueEmails.length // For now, consider all as active
 
-    // Get top clients
-    const clientSpending = new Map()
-    clients?.forEach((order) => {
-      const email = order.customer_email
-      const existing = clientSpending.get(email) || {
-        name: order.customer_name,
-        email,
-        totalSpent: 0,
-        orderCount: 0,
-      }
-      existing.totalSpent += order.amount || 0
-      existing.orderCount += 1
-      clientSpending.set(email, existing)
-    })
+    // Top clients calculation
+    const clientSpending: { [email: string]: { name: string; totalSpent: number; orderCount: number } } = {}
 
-    const topClients = Array.from(clientSpending.values())
-      .sort((a, b) => b.totalSpent - a.totalSpent)
-      .slice(0, 5)
-
-    // Get popular plugins
-    const { data: pluginPurchases } = await supabase
-      .from("plugin_purchases")
-      .select(`
-        amount,
-        plugins (
-          name,
-          download_count
-        )
-      `)
-      .eq("status", "paid")
-      .gte("created_at", startDate.toISOString())
-
-    const pluginStats = new Map()
-    pluginPurchases?.forEach((purchase) => {
-      if (purchase.plugins) {
-        const name = purchase.plugins.name
-        const existing = pluginStats.get(name) || {
-          name,
-          downloads: purchase.plugins.download_count || 0,
-          revenue: 0,
+    orders?.forEach((order) => {
+      if (!clientSpending[order.customer_email]) {
+        clientSpending[order.customer_email] = {
+          name: order.customer_name,
+          totalSpent: 0,
+          orderCount: 0,
         }
-        existing.revenue += purchase.amount || 0
-        pluginStats.set(name, existing)
+      }
+      clientSpending[order.customer_email].totalSpent += order.amount || 0
+      clientSpending[order.customer_email].orderCount += 1
+    })
+
+    pluginPurchases?.forEach((purchase) => {
+      if (!clientSpending[purchase.customer_email]) {
+        clientSpending[purchase.customer_email] = {
+          name: purchase.customer_name,
+          totalSpent: 0,
+          orderCount: 0,
+        }
+      }
+      clientSpending[purchase.customer_email].totalSpent += purchase.final_amount || 0
+      clientSpending[purchase.customer_email].orderCount += 1
+    })
+
+    const topClients = Object.entries(clientSpending)
+      .map(([email, data]) => ({ email, ...data }))
+      .sort((a, b) => b.totalSpent - a.totalSpent)
+      .slice(0, 10)
+
+    // Popular plugins
+    const pluginStats: { [id: string]: { name: string; downloads: number; revenue: number } } = {}
+
+    plugins?.forEach((plugin) => {
+      pluginStats[plugin.id] = {
+        name: plugin.name,
+        downloads: plugin.download_count || 0,
+        revenue: 0,
       }
     })
 
-    const popularPlugins = Array.from(pluginStats.values())
+    pluginPurchases?.forEach((purchase) => {
+      if (pluginStats[purchase.plugin_id]) {
+        pluginStats[purchase.plugin_id].revenue += purchase.final_amount || 0
+      }
+    })
+
+    const popularPlugins = Object.values(pluginStats)
       .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5)
+      .slice(0, 10)
 
-    // Generate daily revenue data (mock data for now)
+    // Daily revenue data (last 30 days for chart)
     const dailyRevenue = []
-    for (let i = 6; i >= 0; i--) {
+    for (let i = 29; i >= 0; i--) {
       const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000)
+      const dateStr = date.toISOString().split("T")[0]
+
+      const dayOrders = orders?.filter((o) => o.created_at?.startsWith(dateStr)) || []
+      const dayPlugins = pluginPurchases?.filter((p) => p.created_at?.startsWith(dateStr)) || []
+
+      const serviceRevenue = dayOrders.reduce((sum, o) => sum + (o.amount || 0), 0)
+      const pluginRevenue = dayPlugins.reduce((sum, p) => sum + (p.final_amount || 0), 0)
+
       dailyRevenue.push({
-        date: date.toLocaleDateString("id-ID", { month: "short", day: "numeric" }),
-        service: Math.floor(Math.random() * 5000000) + 1000000,
-        plugin: Math.floor(Math.random() * 2000000) + 500000,
-        total: 0,
+        date: dateStr,
+        service: serviceRevenue,
+        plugin: pluginRevenue,
+        total: serviceRevenue + pluginRevenue,
       })
     }
-    dailyRevenue.forEach((day) => {
-      day.total = day.service + day.plugin
-    })
 
-    // Generate weekly orders data (mock data for now)
+    // Weekly orders data
     const weeklyOrders = []
-    for (let i = 3; i >= 0; i--) {
+    for (let i = 11; i >= 0; i--) {
       const weekStart = new Date(now.getTime() - i * 7 * 24 * 60 * 60 * 1000)
+      const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000)
+
+      const weekOrders =
+        orders?.filter((o) => {
+          const orderDate = new Date(o.created_at)
+          return orderDate >= weekStart && orderDate < weekEnd
+        }) || []
+
       weeklyOrders.push({
-        week: `Week ${4 - i}`,
-        orders: Math.floor(Math.random() * 20) + 10,
-        completed: Math.floor(Math.random() * 15) + 8,
+        week: `Week ${12 - i}`,
+        orders: weekOrders.length,
+        completed: weekOrders.filter((o) => o.status === "completed").length,
       })
     }
 
-    // Generate monthly trends (mock data for now)
+    // Monthly trends (last 12 months)
     const monthlyTrends = []
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"]
-    months.forEach((month) => {
-      monthlyTrends.push({
-        month,
-        revenue: Math.floor(Math.random() * 50000000) + 20000000,
-        orders: Math.floor(Math.random() * 100) + 50,
-        clients: Math.floor(Math.random() * 50) + 20,
-      })
-    })
+    for (let i = 11; i >= 0; i--) {
+      const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0)
 
-    const stats = {
+      const monthOrders =
+        orders?.filter((o) => {
+          const orderDate = new Date(o.created_at)
+          return orderDate >= monthStart && orderDate <= monthEnd
+        }) || []
+
+      const monthPlugins =
+        pluginPurchases?.filter((p) => {
+          const purchaseDate = new Date(p.created_at)
+          return purchaseDate >= monthStart && purchaseDate <= monthEnd
+        }) || []
+
+      const monthRevenue =
+        monthOrders.reduce((sum, o) => sum + (o.amount || 0), 0) +
+        monthPlugins.reduce((sum, p) => sum + (p.final_amount || 0), 0)
+
+      monthlyTrends.push({
+        month: monthStart.toLocaleDateString("id-ID", { month: "short", year: "numeric" }),
+        revenue: monthRevenue,
+        orders: monthOrders.length,
+        clients: [
+          ...new Set([...monthOrders.map((o) => o.customer_email), ...monthPlugins.map((p) => p.customer_email)]),
+        ].length,
+      })
+    }
+
+    const statsData = {
       totalRevenue,
       serviceRevenue,
-      pluginRevenue: pluginRevenueTotal,
+      pluginRevenue,
       totalOrders,
       pendingOrders,
       completedOrders,
@@ -172,9 +221,9 @@ export async function GET(request: NextRequest) {
       monthlyTrends,
     }
 
-    return NextResponse.json(stats)
+    return NextResponse.json(statsData)
   } catch (error) {
-    console.error("Error fetching stats:", error)
+    console.error("Stats API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
