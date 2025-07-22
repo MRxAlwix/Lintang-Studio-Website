@@ -2,89 +2,215 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { useRouter, usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { LanguageToggle } from "@/components/language-toggle"
-import { useLanguage } from "@/hooks/use-language"
-import { Menu, X } from "lucide-react"
+import { useAuth } from "@/components/auth-provider"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
+import { LogIn, LogOut, User, Settings, ShoppingBag, MessageCircle, BarChart3, Menu, X } from "lucide-react"
+import { toast } from "@/hooks/use-toast"
 
 export function Navbar() {
-  const [isOpen, setIsOpen] = useState(false)
-  const { t } = useLanguage()
+  const { user, profile, signOut, loading } = useAuth()
+  const router = useRouter()
+  const pathname = usePathname()
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
-  const navigation = [
-    { name: t("nav.home"), href: "/" },
-    { name: t("nav.services"), href: "#services" },
-    { name: t("nav.portfolio"), href: "#portfolio" },
-    { name: t("nav.plugins"), href: "/plugins" },
-    { name: t("nav.contact"), href: "#contact" },
+  const handleSignOut = async () => {
+    try {
+      await signOut()
+      toast({
+        title: "Logout berhasil",
+        description: "Anda telah keluar dari akun",
+      })
+      router.push("/")
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Gagal logout, coba lagi",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const navItems = [
+    { href: "/", label: "Beranda" },
+    { href: "/plugins", label: "Plugin Store" },
+    { href: "/#services", label: "Layanan" },
+    { href: "/#portfolio", label: "Portfolio" },
+    { href: "/#contact", label: "Kontak" },
   ]
 
+  const isActive = (href: string) => {
+    if (href === "/") return pathname === "/"
+    return pathname.startsWith(href)
+  }
+
   return (
-    <nav className="bg-white dark:bg-gray-900 shadow-lg sticky top-0 z-50 transition-colors duration-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
+    <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="container mx-auto px-4">
+        <div className="flex h-16 items-center justify-between">
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">LS</span>
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <span className="text-primary-foreground font-bold text-sm">LS</span>
             </div>
-            <span className="text-xl font-bold text-gray-900 dark:text-white">Lintang Studio</span>
+            <span className="font-bold text-xl">Lintang Studio</span>
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-8">
-            {navigation.map((item) => (
+          <div className="hidden md:flex items-center space-x-6">
+            {navItems.map((item) => (
               <Link
-                key={item.name}
+                key={item.href}
                 href={item.href}
-                className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-2 text-sm font-medium transition-colors duration-200"
+                className={`text-sm font-medium transition-colors hover:text-primary ${
+                  isActive(item.href) ? "text-primary" : "text-muted-foreground"
+                }`}
               >
-                {item.name}
+                {item.label}
               </Link>
             ))}
           </div>
 
-          {/* Right side buttons */}
-          <div className="hidden md:flex items-center space-x-4">
-            <LanguageToggle />
+          {/* Right Side Actions */}
+          <div className="flex items-center space-x-4">
             <ThemeToggle />
-            <Button asChild>
-              <Link href="/login">{t("nav.login")}</Link>
-            </Button>
-          </div>
 
-          {/* Mobile menu button */}
-          <div className="md:hidden flex items-center space-x-2">
-            <LanguageToggle />
-            <ThemeToggle />
-            <Button variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)} className="p-2">
-              {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            {loading ? (
+              <div className="w-8 h-8 rounded-full bg-muted animate-pulse" />
+            ) : user && profile ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={profile.avatar_url || "/placeholder.svg"} alt={profile.full_name} />
+                      <AvatarFallback>
+                        {profile.full_name
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("")
+                          .toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56" align="end" forceMount>
+                  <div className="flex items-center justify-start gap-2 p-2">
+                    <div className="flex flex-col space-y-1 leading-none">
+                      <p className="font-medium">{profile.full_name}</p>
+                      <p className="w-[200px] truncate text-sm text-muted-foreground">{profile.email}</p>
+                      <Badge variant={profile.role === "admin" ? "default" : "secondary"} className="w-fit">
+                        {profile.role === "admin" ? "Admin" : "Client"}
+                      </Badge>
+                    </div>
+                  </div>
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuItem asChild>
+                    <Link href="/profile" className="cursor-pointer">
+                      <User className="mr-2 h-4 w-4" />
+                      Profile
+                    </Link>
+                  </DropdownMenuItem>
+
+                  {profile.role === "admin" ? (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <Link href="/admin" className="cursor-pointer">
+                          <BarChart3 className="mr-2 h-4 w-4" />
+                          Admin Dashboard
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/admin/orders" className="cursor-pointer">
+                          <ShoppingBag className="mr-2 h-4 w-4" />
+                          Kelola Pesanan
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/admin/chat" className="cursor-pointer">
+                          <MessageCircle className="mr-2 h-4 w-4" />
+                          Chat Management
+                        </Link>
+                      </DropdownMenuItem>
+                    </>
+                  ) : (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <Link href="/dashboard" className="cursor-pointer">
+                          <BarChart3 className="mr-2 h-4 w-4" />
+                          Dashboard
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/orders" className="cursor-pointer">
+                          <ShoppingBag className="mr-2 h-4 w-4" />
+                          Pesanan Saya
+                        </Link>
+                      </DropdownMenuItem>
+                    </>
+                  )}
+
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings" className="cursor-pointer">
+                      <Settings className="mr-2 h-4 w-4" />
+                      Pengaturan
+                    </Link>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Logout
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button asChild size="sm">
+                <Link href="/login">
+                  <LogIn className="mr-2 h-4 w-4" />
+                  Login
+                </Link>
+              </Button>
+            )}
+
+            {/* Mobile Menu Button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="md:hidden"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            >
+              {isMobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
             </Button>
           </div>
         </div>
 
         {/* Mobile Navigation */}
-        {isOpen && (
-          <div className="md:hidden">
-            <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3 bg-white dark:bg-gray-900 border-t dark:border-gray-700">
-              {navigation.map((item) => (
+        {isMobileMenuOpen && (
+          <div className="md:hidden border-t py-4">
+            <div className="flex flex-col space-y-3">
+              {navItems.map((item) => (
                 <Link
-                  key={item.name}
+                  key={item.href}
                   href={item.href}
-                  className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 block px-3 py-2 text-base font-medium transition-colors duration-200"
-                  onClick={() => setIsOpen(false)}
+                  className={`text-sm font-medium transition-colors hover:text-primary px-2 py-1 ${
+                    isActive(item.href) ? "text-primary" : "text-muted-foreground"
+                  }`}
+                  onClick={() => setIsMobileMenuOpen(false)}
                 >
-                  {item.name}
+                  {item.label}
                 </Link>
               ))}
-              <div className="px-3 py-2">
-                <Button asChild className="w-full">
-                  <Link href="/login" onClick={() => setIsOpen(false)}>
-                    {t("nav.login")}
-                  </Link>
-                </Button>
-              </div>
             </div>
           </div>
         )}

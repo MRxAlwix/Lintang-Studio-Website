@@ -3,31 +3,24 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
-import { LanguageProvider } from "@/hooks/use-language"
-import { Toaster } from "@/components/ui/sonner"
+import { AuthProvider } from "@/components/auth-provider"
+import { Toaster } from "@/components/ui/toaster"
+import { Navbar } from "@/components/navbar"
 
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Lintang Studio - Professional Technical Design Services",
-  description: "Jasa AutoCAD, SketchUp, RAB, dan Plugin Premium untuk Kebutuhan Konstruksi Anda",
-  keywords: "AutoCAD, SketchUp, RAB, Jasa Desain, Plugin, Konstruksi, Arsitektur",
-  authors: [{ name: "Lintang Studio" }],
-  creator: "Lintang Studio",
-  publisher: "Lintang Studio",
-  robots: "index, follow",
+  title: "Lintang Studio - Jasa Desain Teknik & Plugin Professional",
+  description:
+    "Layanan profesional desain teknik AutoCAD, SketchUp 3D, RAB, dan plugin custom. Dipercaya oleh 500+ klien di seluruh Indonesia.",
+  keywords: "desain teknik, autocad, sketchup, RAB, plugin, jasa desain, teknik sipil",
+  authors: [{ name: "Abimanyu Lintang Wibowo" }],
   openGraph: {
-    type: "website",
-    locale: "id_ID",
+    title: "Lintang Studio - Jasa Desain Teknik Professional",
+    description: "Layanan profesional desain teknik dan plugin custom",
     url: "https://lintangstudio.com",
-    title: "Lintang Studio - Professional Technical Design Services",
-    description: "Jasa AutoCAD, SketchUp, RAB, dan Plugin Premium untuk Kebutuhan Konstruksi Anda",
     siteName: "Lintang Studio",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Lintang Studio - Professional Technical Design Services",
-    description: "Jasa AutoCAD, SketchUp, RAB, dan Plugin Premium untuk Kebutuhan Konstruksi Anda",
+    type: "website",
   },
     generator: 'v0.dev'
 }
@@ -41,20 +34,11 @@ export default function RootLayout({
     <html lang="id" suppressHydrationWarning>
       <body className={inter.className}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <LanguageProvider>
-            {children}
-            <Toaster
-              position="top-right"
-              toastOptions={{
-                duration: 4000,
-                style: {
-                  background: "var(--background)",
-                  color: "var(--foreground)",
-                  border: "1px solid var(--border)",
-                },
-              }}
-            />
-          </LanguageProvider>
+          <AuthProvider>
+            <Navbar />
+            <main className="min-h-screen">{children}</main>
+            <Toaster />
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

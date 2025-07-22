@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { toast } from "@/hooks/use-toast"
-import { Eye, EyeOff, ArrowLeft, LogIn, Loader2, AlertCircle } from "lucide-react"
+import { Eye, EyeOff, ArrowLeft, LogIn, Loader2, AlertCircle, UserPlus } from "lucide-react"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 
 export default function LoginPage() {
@@ -23,6 +23,7 @@ export default function LoginPage() {
     password: "",
   })
   const [isLoading, setIsLoading] = useState(false)
+  const [isCreatingDemo, setIsCreatingDemo] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
   const router = useRouter()
@@ -74,6 +75,58 @@ export default function LoginPage() {
     return !emailError && !passwordError
   }
 
+  // Create demo users if they don't exist
+  const createDemoUsers = async () => {
+    setIsCreatingDemo(true)
+    try {
+      // Create admin user
+      const { data: adminData, error: adminError } = await supabase.auth.signUp({
+        email: "admin@lintangstudio.com",
+        password: "admin123",
+        options: {
+          data: {
+            full_name: "Abimanyu Lintang Wibowo",
+            role: "admin",
+          },
+        },
+      })
+
+      // Create client user
+      const { data: clientData, error: clientError } = await supabase.auth.signUp({
+        email: "client@example.com",
+        password: "client123",
+        options: {
+          data: {
+            full_name: "Demo Client",
+            role: "client",
+          },
+        },
+      })
+
+      if (adminError && !adminError.message.includes("already registered")) {
+        console.error("Admin creation error:", adminError)
+      }
+
+      if (clientError && !clientError.message.includes("already registered")) {
+        console.error("Client creation error:", clientError)
+      }
+
+      toast({
+        title: "Demo users created",
+        description: "You can now login with the demo credentials",
+      })
+    } catch (error: any) {
+      console.error("Demo user creation error:", error)
+      toast({
+        title: "Error creating demo users",
+        description: "Please try again or contact support",
+        variant: "destructive",
+      })
+    } finally {
+      setIsCreatingDemo(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoginError(null)
@@ -101,20 +154,44 @@ export default function LoginPage() {
       }
 
       if (data.user) {
-        // Get user profile to check role
-        const { data: profile, error: profileError } = await supabase
+        // Get or create user profile
+        let { data: profile, error: profileError } = await supabase
           .from("profiles")
-          .select("role")
+          .select("*")
           .eq("id", data.user.id)
           .single()
 
-        if (profileError) {
-          console.error("Profile fetch error:", profileError)
+        // If profile doesn't exist, create it
+        if (profileError && profileError.code === "PGRST116") {
+          const role = formData.email === "admin@lintangstudio.com" ? "admin" : "client"
+          const fullName =
+            formData.email === "admin@lintangstudio.com"
+              ? "Abimanyu Lintang Wibowo"
+              : data.user.user_metadata?.full_name || "User"
+
+          const { data: newProfile, error: createError } = await supabase
+            .from("profiles")
+            .insert({
+              id: data.user.id,
+              email: data.user.email,
+              full_name: fullName,
+              role: role,
+              phone: "",
+              company: "",
+            })
+            .select()
+            .single()
+
+          if (createError) {
+            console.error("Profile creation error:", createError)
+          } else {
+            profile = newProfile
+          }
         }
 
         toast({
           title: "Login berhasil",
-          description: "Selamat datang kembali!",
+          description: `Selamat datang, ${profile?.full_name || "User"}!`,
         })
 
         // Redirect based on role
@@ -130,7 +207,7 @@ export default function LoginPage() {
       let errorMessage = "Terjadi kesalahan saat login"
 
       if (error.message?.includes("Invalid login credentials")) {
-        errorMessage = "Email atau password salah"
+        errorMessage = "Email atau password salah. Pastikan Anda sudah membuat akun atau gunakan demo credentials."
       } else if (error.message?.includes("Email not confirmed")) {
         errorMessage = "Email belum diverifikasi. Silakan cek email Anda"
       } else if (error.message?.includes("Too many requests")) {
@@ -176,6 +253,22 @@ export default function LoginPage() {
         variant: "destructive",
       })
     }
+  }
+
+  const fillDemoCredentials = (type: "admin" | "client") => {
+    if (type === "admin") {
+      setFormData({
+        email: "admin@lintangstudio.com",
+        password: "admin123",
+      })
+    } else {
+      setFormData({
+        email: "client@example.com",
+        password: "client123",
+      })
+    }
+    setErrors({ email: "", password: "" })
+    setLoginError(null)
   }
 
   return (
@@ -299,15 +392,58 @@ export default function LoginPage() {
             </form>
 
             {/* Demo Credentials */}
-            <div className="mt-6 p-4 bg-muted rounded-lg">
+            <div className="mt-6 p-4 bg-muted rounded-lg space-y-3">
               <p className="text-sm font-medium mb-2">Demo Credentials:</p>
-              <div className="text-xs space-y-1 text-muted-foreground">
-                <p>
-                  <strong>Admin:</strong> admin@lintangstudio.com / admin123
-                </p>
-                <p>
-                  <strong>Client:</strong> client@example.com / client123
-                </p>
+
+              <div className="space-y-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start text-xs bg-transparent"
+                  onClick={() => fillDemoCredentials("admin")}
+                  disabled={isLoading}
+                >
+                  <LogIn className="w-3 h-3 mr-2" />
+                  Admin: admin@lintangstudio.com / admin123
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start text-xs bg-transparent"
+                  onClick={() => fillDemoCredentials("client")}
+                  disabled={isLoading}
+                >
+                  <LogIn className="w-3 h-3 mr-2" />
+                  Client: client@example.com / client123
+                </Button>
+              </div>
+
+              {/* Create Demo Users Button */}
+              <div className="pt-2 border-t">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="w-full"
+                  onClick={createDemoUsers}
+                  disabled={isCreatingDemo || isLoading}
+                >
+                  {isCreatingDemo ? (
+                    <>
+                      <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                      Creating Demo Users...
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="mr-2 h-3 w-3" />
+                      Create Demo Users
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-muted-foreground mt-1 text-center">Click this if demo login fails</p>
               </div>
             </div>
           </CardContent>
